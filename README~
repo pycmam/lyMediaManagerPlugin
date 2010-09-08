@@ -1,0 +1,204 @@
+# lyMediaManagerPlugin
+
+The plugin offers a simple web interface to upload and manage images, documents and other media files directly from the backend of your symfony application. File upload and file browsing features can be easily integrated into the TinyMCE editor.
+
+lyMediaManagerPlugin is inspired to sfAssetsLibraryPlugin for Propel, but some of its features have not been ported yet while others have been reimplemented in a different way.
+
+This plugin is being developed to be included in Lyra CMS (also under development), but it's a standard plugin that can be used in any symfony project with no dependencies except sfThumbnailPlugin, needed to generate thumbnails.
+
+This is currently a beta release, play with it, please report me any error and feel free to suggest improvements
+
+##Installation
+
+###Automatic installation
+
+lyMediaManagerPlugin can be quickly installed with the symfony command `plugin:install` (you must have PEAR installed on your system).
+
+    php symfony plugin:install --stability=beta lyMediaManagerPlugin
+
+sfThumbnailPlugin is also needed to generate thumbnails of images.
+
+    php symfony plugin:install sfThumbnailPlugin
+
+###Manual installation
+
+Alternatively you can uncompress the .tgz package inside the `plugins` directory of your symfony project. If you have Subversion installed you can also install the plugin by checking out the source code from the repository: `cd` to the `plugins` directory of your symfony project and execute
+
+    svn checkout http://svn.symfony-project.com/plugins/lyMediaManagerPlugin/trunk lyMediaManagerPlugin
+
+If you choose the manual installation another two steps are needed. Plugins must be enabled in your project configuration class. Example:
+
+    //%project_dir%/config/ProjectConfigurationClass.class.php
+
+    ...
+    public function setup()
+    {
+      $this->enablePlugins('sfDoctrinePlugin');
+      $this->enablePlugins('sfThumbnailPlugin');
+      $this->enablePlugins('lyMediaManagerPlugin');
+    }
+    ...
+Plugin assets must be published with the following symfony command
+
+    php symfony plugin:publish-assets
+
+### Building models and tables
+
+Then we need to generate plugin model classes and corresponding database tables.
+
+    php symfony doctrine:build --all
+
+Keep in mind that this will erase all your data and rebuild everything from scratch. Before executing the statement above you may want to backup your database and restore it thereafter.
+
+### Enabling plugin modules
+
+lyMediaManagerPlugin contains two modules: lyMediaAsset, lyMediaFolder. Both must be enabled in `settings.yml` file (usually in your backend application). Example.
+
+    #%project_dir%/apps/backend/config/settings.yml
+    
+    all:
+      .settings:
+        enabled_modules: [default, lyMediaAsset, lyMediaFolder]
+
+### Initializing folder tree
+
+lyMediaManagerPlugin provides a custom task to create the media library root directory inside the `web` directory of your project and the corresponding root node in the database. By default this directory will be called `media`: see configuration below if you prefer a different name.
+
+    php symfony media:create-root
+
+This command should be executed by an user of the same group of the http server, if this is not possible chmod/chown the media library root directory so that is writable by the http server.
+
+### Go to default page
+
+Assuming that you are testing the plugin on localhost and you have enabled modules in your backend application, visit
+
+http://localhost/backend.php/ly_media_asset
+
+to go to the module default page.
+
+## Configuration
+
+Some configuration parameters can be set inside the `app.yml` file of your application. Example.
+
+    #%project_dir%/apps/backend/config/app.yml
+
+    all:
+      lyMediaManager:
+        # root directory name (used by task media:create-root)
+        media_root: media
+        # thumbnails settings
+        thumbnails:
+          small:
+            width: 84
+            height: 84
+            # forces thumbnail size to fixed width/height values
+            shave: true
+          medium:
+            width: 194
+            height: 152
+        # name of folder where thumbnails will be created
+        thumbnail_folder: thumbs
+        # thumbnails will be created only for these mime-types
+        create_thumbnails_for: [image/jpeg,image/png,image/gif]
+        # only files with these extensions can be uploaded
+        allowed_extensions: [jpg,png,gif,txt]
+        # only files of these mime-types can be uploaded
+        mime_types: [image/jpeg,image/png,image/gif,text/plain]
+
+Note: `small` and `medium` size thumbnails are used by the plugin itself and should not be removed. More thumbnails of desired sizes can be created for use in your application.
+
+## Synchronize task
+
+A dedicated task is available to synchronize the media library database with the contents of a directory.
+
+    php symfony media:synchronize ./web/uploads/medias --application=backend
+
+All folders and files in './web/uploads/medias' (a relative path, but you can specify an absolute path as well) that are not present in the media library will be added and a corresponding record created in the database. Thumbnails will be automatically generated for files of mime-types indicated in plugin configuration (see parameter `create_thumbnails_for`).
+
+    php symfony media:synchronize ./web/uploads/medias --removeOrphanAssets --application=backend
+
+Same as above, but in addition every file that is present in the media library without a corresponding file in './web/uploads/medias' will be removed from the media library.
+
+    php symfony media:synchronize ./web/uploads/medias --removeOrphanFolders --application=backend
+
+This time every folder in the media library without a corresponding folder in the directory will be removed. If something it's not clear, play with the task in a development environment to see the effect of these switches.
+
+## Working with TinyMCE editor
+
+lyMediaManagerPlugin can work together the TinyMCE editor to make file browsing and file uploading features accessible directly from the editor toolbar. A few configuration steps are needed.
+
+### Installing TinyMCE
+
+Download the package from the [TinyMCE site](http://tinymce.moxiecode.com/download.php): it will be something like `tinymce_3_3_x.zip`, where `x` is the minor version number. Uncompress it in a temporary folder on your hard disk: the resulting folder tree should be like the following
+
+    tinymce
+      --jscripts
+        --tiny_mce <--Only this folder (with all subfolders and files inside) is needed.
+          ...
+      --examples
+      ...
+
+Copy the `tiny_mce` folder (with all its subfolders and files) in `%project_dir%/web/js`. Verify that the following javascript files are present exactly in these paths:
+
+    %project_dir%/web/js/tiny_mce/tiny_mce.js
+    %project_dir%/web/js/tiny_mce/tiny_mce_popup.js
+
+### Configuring your form
+
+To use TinyMCE with the file browser provided by lyMediaManagerPlugin you need to configure your forms following one of these **alternative** methods.
+
+1) Dedicated widget
+
+In the configure() method of your form replace `sfWidgetFormTextarea` with `sfWidgetFormLyMediaTinyMCE`, for example, assuming that the field you want to make editable with TinyMCE editor is named `content`
+
+    class MyForm extends BaseMyForm
+    {
+      public function configure()
+      {     
+        ...  
+        $this->widgetSchema['content'] = new sfWidgetFormLyMediaTinyMCE(array(
+         'width' => 450,
+         'height' => 300		
+        ));
+        ...
+      }
+    }
+
+Refer to the source of `sfWidgetFormLyMediaTinyMCE` for other options supported by the widget. If you have installed TinyMCE exactly as explained above, you won't need to change options default values.
+
+
+2) Manual inclusion of Javascript files
+
+If you prefer to not use the widget you can include all the needed Javascript files in your form template through standard helpers.
+
+    <?php use_stylesheets_for_form($form) ?>
+    <?php use_javascripts_for_form($form) ?>
+    <?php use_javascript('tiny_mce/tiny_mce', 'last'); ?>
+    <?php use_javascript('/lyMediaManagerPlugin/js/lymedia_tiny', 'last'); ?>
+    <?php use_javascript('/lyMediaManagerPlugin/js/lymedia_tiny_cfg', 'last'); ?>
+    ...
+
+Then in the configure() method of your form you can set a class attribute for all textareas you want to make editable with TinyMCE.
+
+    class MyForm extends BaseMyForm
+    {
+      public function configure()
+      {     
+        ...  
+        $this->widgetSchema['content']->setAttribute('class', 'rich');
+        ...
+      }
+    }
+
+Also refer to comments inside lymedia_tiny_cfg.js file because you may need to edit something depending by the name and location of your front controller.
+
+Using `sfWidgetFormLyMediaTinyMCE` is easier, while manual inclusion of Javascript files is preferable if you want to keep TinyMCE configuration in a separate javascript file e do not want to mix markup and Javascript code in document body. Whichever method you choose if you have configured everything properly, you will see `lyMediaManagerPlugin` file browser when you select the `insert/edit image` button in TinyMCE toolbar and click the `browse` icon in the pop-up window.
+
+
+## Todo
+
+* Complete this README :)
+* i18n
+* Improve user interface
+* Support other plugins for thumbnail generation (sfImageTransformPlugin)
+* Add more tests
